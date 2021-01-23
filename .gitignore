@@ -2,7 +2,7 @@
 __pycache__/
 .ipynb_checkpoints/
 .ignore/
-.vs_code/
+.vscode/
 venv/
 
 *.db
