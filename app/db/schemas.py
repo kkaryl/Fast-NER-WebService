@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 
 from pydantic import BaseModel
 from pydantic.main import ForwardRef
@@ -18,7 +18,7 @@ class EntityCreate(EntityBase):
 
 class Entity(EntityBase):
     id: int
-    # sent_id: int
+
     # sentences: Sentences = []
 
     class Config:
@@ -40,6 +40,7 @@ class Sentence(SentenceBase):
 
     class Config:
         orm_mode = True
+
 
 # Entity.update_forward_refs()
 
@@ -66,3 +67,7 @@ class Association(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class EntitySearch(BaseModel):
+    entity_name: str

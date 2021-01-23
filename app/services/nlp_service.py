@@ -6,11 +6,7 @@ import spacy
 
 nlp = spacy.load('en_core_web_sm')
 
-
-def extract_and_store_entities(req_id: int, text: str) -> None:
-    db = SessionLocal()
-
-    named_entities_labels = [
+NAMED_ENTITY_LABELS = [
         'PERSON',
         'ORG',
         'GPE',
@@ -21,6 +17,9 @@ def extract_and_store_entities(req_id: int, text: str) -> None:
         'NORP'
     ]
 
+def extract_and_store_entities(req_id: int, text: str) -> None:
+    db = SessionLocal()
+
     try:
         docs = nlp(text)
         sentences = list(docs.sents)
@@ -28,7 +27,7 @@ def extract_and_store_entities(req_id: int, text: str) -> None:
         for sent in sentences:
             sent_entities = {}
             for ent in sent.ents:
-                if ent.label_ in named_entities_labels:
+                if ent.label_ in NAMED_ENTITY_LABELS:
                     ent_text = ent.text.strip()
                     if ent_text not in sent_entities:
                         sent_entities[ent_text] = EntityCreate(name=ent_text, ent_type=ent.label_)

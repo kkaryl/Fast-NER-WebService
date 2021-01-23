@@ -1,20 +1,30 @@
-from typing import List
+import string
+import random
+import logging
 import time
+from os import path
+
 import uvicorn
-import requests
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from fastapi_versioning import VersionedFastAPI
 from starlette.responses import RedirectResponse
 
 from db.database import SessionLocal, engine
 from db import schemas, crud, models
+from api import ping, requests, sentences, entities
 
-from services.scraper_service import get_web_text, check_valid_url
+# setup loggers
+log_file_path = path.join(path.dirname(path.abspath(__file__)), 'logging.conf')
+logging.config.fileConfig(log_file_path, disable_existing_loggers=False)
 
+# get root logger
+logger = logging.getLogger(__name__)  # the __name__ resolve to "main" since we are at the root of the project.
+
+# create database engine
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title='NER Service')
 
 # CORS
 origins = ['*']
@@ -27,7 +37,7 @@ app.add_middleware(
 )
 
 
-# Dependency
+# Dependency Injection
 def get_db():
     db = SessionLocal()
     try:
@@ -36,96 +46,52 @@ def get_db():
         db.close()
 
 
-# Process Timer
+app.include_router(ping.router)
+app.include_router(requests.router, prefix="/requests", tags=["requests"])
+app.include_router(entities.router, prefix="/entities", tags=["entities"])
+app.include_router(sentences.router, prefix='/sentences', tags=['sentences'])
+
+app = VersionedFastAPI(app)
+
+
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
+async def log_requests(request: Request, call_next):
+    """
+    Middleware handler to add request logging and process timer.
+    """
+    idem = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    logger.info(f"rid={idem} start request path={request.url.path}")
     start_time = time.time()
+
     response = await call_next(request)
-    process_time = time.time() - start_time
+
+    process_time = (time.time() - start_time) * 1000
+    formatted_process_time = '{0:.2f}'.format(process_time)
+    logger.info(f"rid={idem} completed_in={formatted_process_time}ms status_code={response.status_code}")
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
 
-@app.post("/requests/", response_model=schemas.Request)
-async def create_request(request: schemas.RequestCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    db_request = crud.get_request_by_path(db, path=request.path)
-    if db_request:
-        if db_request.status == models.Statuses.Success:
-            raise HTTPException(status_code=400, detail="Request has already been processed.")
-        elif db_request.status == models.Statuses.Processing:
-            raise HTTPException(status_code=400, detail="Request is being processed.")
-    else:
-        db_request = crud.create_request(db=db, request=request)
-
-    if db_request:
-        if check_valid_url(db_request.path):
-            # Scrape web text
-            background_tasks.add_task(get_web_text, db_request.id)
-        # Otherwise, handle differently
-
-    return db_request
-
-
-@app.get("/requests/", response_model=List[schemas.Request])
-def read_requests(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    requests = crud.get_requests(db, skip=skip, limit=limit)
-    return requests
-
-
-@app.get("/requests/{req_id}", response_model=schemas.Request)
-def read_request(req_id: int, db: Session = Depends(get_db)):
-    db_req = crud.get_request(db, req_id=req_id)
-    if db_req is None:
-        raise HTTPException(status_code=404, detail="URL request not found")
-    return db_req
-
-
-@app.post("/requests/{req_id}/sentences")
-def create_sentences(req_id: int, sentences: List[schemas.SentenceCreate], db: Session = Depends(get_db)):
-    # db_doc = crud.get_document_by_url(db, url=document.url)
-    # if db_doc:
-    #     raise HTTPException(status_code=400, detail="URL has already been processed.")
-    return crud.create_sentences(db=db, req_id=req_id, sentences=sentences)
-
-
-@app.get("/requests/{req_id}/sentences", response_model=List[schemas.Sentence])
-def read_request_sentences(req_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    db_req_sents = crud.get_request_sentences(db, req_id=req_id, skip=skip, limit=limit)
-    return db_req_sents
-
-
-@app.post("/entities")
-def create_sentence_entity(sent_id: int, entities: List[schemas.EntityCreate], db: Session = Depends(get_db)):
-    db_sent = crud.get_sentence(db, sent_id)
-    if not db_sent:
-        raise HTTPException(status_code=400, detail=f"Sentence of id {sent_id} does not exist")
-    return crud.create_entities(db=db, db_sent=db_sent, entities=entities)
-
-
-@app.get("/entities/", response_model=List[schemas.Entity])
-def read_entities(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    entities = crud.get_entities(db, skip=skip, limit=limit)
-    return entities
-
-
-@app.get("/entities/search/")#, response_model=List[schemas.Sentence])
-def search_entity_sentences(entity_name: str, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    db_entity = crud.get_entity_by_name(db, entity_name=entity_name)
-    if not db_entity:
-        raise HTTPException(status_code=404, detail=f"Entity {entity_name} does not exist")
-    db_entity_sents = crud.get_entity_sentences(db, db_entity=db_entity, skip=skip, limit=limit)
-    return db_entity_sents
+@app.on_event("startup")
+async def startup_event():
+    """
+    Startup event to "abruptly stopped" Requests to Error status.
+    """
+    db = SessionLocal()
+    try:
+        err_count = crud.update_requests_status(db, [models.Statuses.Queued, models.Statuses.Processing],
+                                                models.Statuses.Error)
+        logger.info(f"Updated {err_count} requests to Error state.")
+    finally:
+        db.close()
 
 
 @app.get("/")
 def main():
-    return RedirectResponse(url="/docs/")
-
-
-# 127.0.0.1:8000/items/4?q=hello
-# @app.get("/items/{item_id}")
-# async def read_item(item_id: int, q: Optional[str] = None):
-#     return {"item_id": item_id, "q": q}
+    """
+    Redirect API service entry to API docs.
+    """
+    return RedirectResponse(url="/v1_0/docs")
 
 
 if __name__ == "__main__":
