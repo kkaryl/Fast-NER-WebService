@@ -1,6 +1,6 @@
-from . import crud
-from .database import SessionLocal
-from .schemas import EntityCreate
+from db.database import SessionLocal
+from db import crud
+from db.schemas import EntityCreate
 
 import spacy
 
@@ -10,13 +10,15 @@ nlp = spacy.load('en_core_web_sm')
 def extract_and_store_entities(req_id: int, text: str) -> None:
     db = SessionLocal()
 
-    ignore_entities = [
-        'DATE',
-        'CARDINAL',
-        'ORDINAL',
-        'TIME',
-        'QUANTITY',
-        'MONEY',
+    named_entities_labels = [
+        'PERSON',
+        'ORG',
+        'GPE',
+        'PRODUCT',
+        'EVENT',
+        'LANGUAGE',
+        'FAC',
+        'NORP'
     ]
 
     try:
@@ -26,7 +28,7 @@ def extract_and_store_entities(req_id: int, text: str) -> None:
         for sent in sentences:
             sent_entities = {}
             for ent in sent.ents:
-                if ent.label_ not in ignore_entities:
+                if ent.label_ in named_entities_labels:
                     ent_text = ent.text.strip()
                     if ent_text not in sent_entities:
                         sent_entities[ent_text] = EntityCreate(name=ent_text, ent_type=ent.label_)

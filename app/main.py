@@ -1,30 +1,30 @@
-from typing import List, Optional
+from typing import List
 import time
 import uvicorn
 import requests
 from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks, Request
-# from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
-from . import crud, models, schemas
-from .database import SessionLocal, engine
+from db.database import SessionLocal, engine
+from db import schemas, crud, models
 
-from .scraper_service import get_web_text
+from services.scraper_service import get_web_text, check_valid_url
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 # CORS
-# origins = ['*']
-#
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_methods=['*'],
-#     allow_headers=['*'],
-# )
+origins = ['*']
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
 
 # Dependency
@@ -46,17 +46,6 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
-def _is_valid_url(path: str) -> bool:
-    """
-    Helper function to check if request path is a valid URL.
-    """
-    try:
-        requests.get(path)
-        return True
-    except requests.ConnectionError:
-        return False
-
-
 @app.post("/requests/", response_model=schemas.Request)
 async def create_request(request: schemas.RequestCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     db_request = crud.get_request_by_path(db, path=request.path)
@@ -69,7 +58,7 @@ async def create_request(request: schemas.RequestCreate, background_tasks: Backg
         db_request = crud.create_request(db=db, request=request)
 
     if db_request:
-        if _is_valid_url(db_request.path):
+        if check_valid_url(db_request.path):
             # Scrape web text
             background_tasks.add_task(get_web_text, db_request.id)
         # Otherwise, handle differently

@@ -1,7 +1,7 @@
 from typing import List
 from sqlalchemy.orm import Session
 
-from . import models, schemas
+from . import schemas, models
 
 
 def get_request(db: Session, req_id: int):
@@ -48,6 +48,7 @@ def create_sentence(db: Session, req_id: int, sentence: str):
     db.refresh(db_sent)
     return db_sent
 
+
 def get_request_sentences(db: Session, req_id: int, skip: int = 0, limit: int = 100):
     return db.query(models.Sentence).filter(models.Sentence.req_id == req_id).offset(skip).limit(limit).all()
 
@@ -88,13 +89,11 @@ def get_entity_sentences(db: Session, db_entity: models.Entity, skip: int = 0, l
                                                  (models.association_table.c.ent_id == db_entity.id)).offset(skip).limit(limit).all()
 
 
-# def get_items(db: Session, skip: int = 0, limit: int = 100):
-#     return db.query(models.Item).offset(skip).limit(limit).all()
-#
-#
-# def create_user_item(db: Session, item: schemas.ItemCreate, user_id: int):
-#     db_item = models.Item(**item.dict(), owner_id=user_id)
-#     db.add(db_item)
-#     db.commit()
-#     db.refresh(db_item)
-#     return db_item
+def update_requests_status(db: Session, original_statuses: List[models.Statuses], new_status: models.Statuses):
+    old_statuses = [status.name for status in original_statuses]
+    db_requests = db.query(models.Request).filter(models.Request.status in old_statuses).all()
+    for db_request in db_requests:
+        setattr(db_request, 'status', new_status.name)
+    db.flush()
+    db.commit()
+    return len(db_requests)
