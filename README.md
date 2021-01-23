@@ -8,7 +8,7 @@ Fast NER WebService is a docker-ready Python-based web service written in [FastA
 
 ## How to Run
 ### Method 1: Google Cloud Run
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run?git_repo=https://github.com/kkaryl/fast-ner-service/fast-ner-service.git)
 
 ### Method 2: Docker Run
 Use the provided Dockerfile to build a Docker image for running the service.
@@ -29,7 +29,7 @@ The source codes are structured in the following manner:
 + **app** folder: contains codes for the web API
     + **api** folder: contains api routers
     + **db** folder: contains SQLAlchemy models and Pydantic schemas
-    + **service** folder: contains business logic e.g. web scraping service
+    + **service** folder: contains business logic e.g. web scraping service, nlp service
     + Also contains main.py, Dockerfile, requirements.txt
 + **tests** folder: contains pytest scripts
 
@@ -79,3 +79,5 @@ The following assumptions made during the creation of this webservice:
 ## OpenAPI Documentation
 Please find the OpenAPI documentation at:
 + Version 1: http://localhost:8000/v1_0/docs
+
+or the latest openai.json file in directory.
