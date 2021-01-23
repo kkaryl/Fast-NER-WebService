@@ -1,7 +1,3 @@
-from starlette.testclient import TestClient
-
-from app.main import app
-
 
 def test_ping(test_app):
     # pytest .
